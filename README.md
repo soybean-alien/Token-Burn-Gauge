@@ -1,6 +1,8 @@
-# Token Burn Gauge
+![Token Burn Gauge: Claude Code, Codex, GPU and CPU on one board](assets/hero.png)
 
 <p align="center"><img src="assets/Token-Burn-Gauge-Stack.svg" alt="Built with Python 67.8%, C# 19.4%, HTML 10.7%"></p>
+
+# Token Burn Gauge
 
 A small Windows desktop app that shows, on eight dials, how fast your AI tools are burning tokens and what your PC is doing while they do it. It reads counters and timestamps only. It never calls a model and never reads what you or the model wrote.
 
@@ -57,7 +59,7 @@ The last command needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) and wri
 
 ## Credits and AI disclosure
 
-- Made by **soybean_alien**. Licensed under the **GNU General Public License v3.0** (see [LICENSE](LICENSE)).
+- Made by **soybean_alien**. Licensed under the **MIT License** (see [LICENSE](LICENSE)).
 - Built on [.NET](https://github.com/dotnet/runtime) and [Windows Forms](https://github.com/dotnet/winforms), with [Python](https://www.python.org/) for the collectors and [Inno Setup](https://jrsoftware.org/isinfo.php) for the installer.
 - Token Burn Gauge is an unofficial personal tool. It isn't affiliated with Anthropic, OpenAI, Nous Research, NVIDIA or AMD.
 - **AI disclosure:** Token Burn Gauge was designed with and written by **Claude Code (Anthropic, Claude Fable 5.2)**, directed and tested by the author on Windows 11. The dials were checked against live Claude Code and Codex sessions on the author's PC; the installer has been built but not yet tested on a second PC.

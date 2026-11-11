@@ -13,3 +13,4 @@ artifacts/
 # Local captures
 app/app-window.png
 .claude/
+tools/banner/hero.html
