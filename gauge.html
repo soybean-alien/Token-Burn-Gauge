@@ -10,7 +10,7 @@
   :root {
     color-scheme: dark;
     --bg: #0a0a0b; --panel: #101114; --line: #1a2230; --text: #e8e4d8; --dim: #6b7484;
-    --tier1: #b48cff; --tier2: #ff8a3d; --tier3: #ffd446; --tier4: #5aa9ff;
+    --tier1: #b48cff; --tier2: #ff8a3d; --tier3: #ffd446; --tier4: #5aa9ff; --tier5: #d400ff;
     --idle: #5b6472; --warm: #ffd446; --burning: #ff8a3d; --redline: #ff3b30; --dead: #3a4150;
     --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
     --serif: "Instrument Serif", Georgia, serif;
@@ -80,7 +80,7 @@
   <p class="sub">Four sources, read separately. A source that stops reporting says so; it never reads as zero.</p>
 </header>
 <div class="dials" id="dials"></div>
-<footer>The kill buttons end work in flight: unsaved output of that reply is lost. The Hermes button is a pause: no new runs start, a turn already running finishes, and Hermes stays paused until RESUME is pressed. No model calls anywhere in this pipeline. Counters and timestamps only. Dollar rates are estimates, not billed money.</footer>
+<footer>The kill buttons end work in flight: unsaved output of that reply is lost. The pause button starts no new runs: a turn already running finishes, and the model stays paused until RESUME is pressed. No model calls anywhere in this pipeline. Counters and timestamps only.</footer>
 
 <script>
 "use strict";
@@ -90,7 +90,7 @@ const CX = 160, CY = 160, R = 120, SWEEP = 240, START = -120, REST_MS = 60000;
 const SOURCES = {
   c: { url: "metrics-c.json" },   // Claude Code
   x: { url: "metrics-x.json" },   // Codex
-  a: { url: "metrics-a.json" },   // VPS (Hermes), relayed
+  a: { url: "metrics-a.json" },   // local model
   b: { url: "metrics-b.json" },   // this PC: GPU and CPU
 };
 
@@ -111,11 +111,10 @@ const MODULES = [
   { id: "x-m", family: "Codex", src: "x", title: "Codex", what: "new tokens per minute, this PC",
     dial: primary, ring: d => frac(d.dial.ring.value, 2000, true),
     digits: 0, sparkUnit: "tokens/min", sparkFloor: 1000, rows: rowsCodexMinute },
-  { id: "a", src: "a", title: "VPS (Hermes)", what: "metered spend, estimated",
-    dial: primary, ring: d => frac(d.dial.ring.value, 1000000, true),
-    digits: 2, unit: d => `USD per hour, ${d.detail.cost_basis || "estimated"}`,
-    sparkUnit: "USD/hr estimated", sparkFloor: 0.5, rows: rowsA,
-    kill: "vps", killLabel: "PAUSE HERMES (NEW RUNS)", resume: "vps-resume", resumeLabel: "RESUME HERMES" },
+  { id: "a", family: "Local model", src: "a", title: "Local model", what: "new tokens per minute",
+    dial: primary, ring: d => frac(d.dial.ring.value, 60, true),
+    digits: 0, sparkUnit: "tokens/min", sparkFloor: 1000, rows: rowsA,
+    kill: "model", killLabel: "PAUSE MODEL (NEW RUNS)", resume: "model-resume", resumeLabel: "RESUME MODEL" },
   { id: "b", family: "This PC (GPU)", model: d => d.detail.gpu, src: "b", title: "This PC (GPU)", what: "local hardware load, watts",
     dial: primary,
     ring: d => d.dial.ring.value == null ? frac(d.detail.gpu_util_pct, 100, false) : frac(d.dial.ring.value, 500, true),
@@ -269,21 +268,13 @@ function rowsCodexMinute(d) {
   return h;
 }
 function rowsA(d) {
-  const x = d.detail, f = d.dial.fuel;
-  let h = row("credits remaining", f.value == null ? "not available" : fmt(f.value, 2) + " USD" + (x.low_fuel ? " (LOW)" : ""), x.low_fuel ? "low" : "");
-  if (x.fuel_age_s != null) h += row("balance read", fmt(x.fuel_age_s / 60, 0) + " min ago");
-  // Where the needle comes from, as the VPS says it: "store" = 30 s window over finished turns, "stream" = live.
-  if (x.per_second_basis) h += row("needle read from",
-    x.per_second_basis === "stream" ? "the live stream" :
-    x.per_second_basis === "store" ? "finished turns, 30 s window (not live)" : esc(x.per_second_basis));
-  if (x.warming) h += row("window", "still filling; needle reads low", "low");
-  h += row("tokens per minute, in / out", `${fmt(x.tokens_in_per_min, 0)} / ${fmt(x.tokens_out_per_min, 0)}`)
+  const x = d.detail;
+  let h = row("per minute, in / out", `${fmt(x.tokens_in_per_min, 0)} / ${fmt(x.tokens_out_per_min, 0)}`)
     + row("cache read per minute", fmt(x.cache_read_per_min, 0))
-    + row("API calls per minute", fmt(x.api_calls_per_min, 1))
-    + row("active sessions", fmt(x.active_sessions, 0));
-  for (const m of (x.models || []).slice(0, 3)) h += row(esc(m.model), fmt(m.usd_per_hr, 2) + " USD/hr estimated");
-  if (x.period_end) h += row("period ends", esc(x.period_end));
-  return h;
+    + row("API calls per minute", fmt(x.api_calls_per_min, 1));
+  if (x.last_activity_age_s != null) h += row("last activity", fmt(x.last_activity_age_s / 60, 0) + " min ago");
+  if (x.export_age_s != null) h += row("counts read", fmt(x.export_age_s, 0) + " s ago");
+  return h + row("counted from", esc(x.token_source || ""));
 }
 function rowsB(d) {
   const x = d.detail, f = d.dial.fuel;
@@ -315,7 +306,7 @@ function rowsFirstToken(d) {
   h += row("last model", x.model ? esc(x.model) : "none seen yet")
     + row("read from", esc(t.basis || ""))
     + row("Codex", "no first-token signal")
-    + row("Hermes", "waits on its stream hook");
+    + row("Local model", "waits on its stream hook");
   return h;
 }
 

@@ -129,7 +129,7 @@ static class Catalog
     {
         ["c"] = new Source { Url = "metrics-c.json" },   // Claude Code
         ["x"] = new Source { Url = "metrics-x.json" },   // Codex
-        ["a"] = new Source { Url = "metrics-a.json" },   // VPS (Hermes), relayed
+        ["a"] = new Source { Url = "metrics-a.json" },   // local model
         ["b"] = new Source { Url = "metrics-b.json" },   // this PC: GPU and CPU
     };
 
@@ -147,12 +147,12 @@ static class Catalog
         new Module { Id = "x-m", Family = "Codex", Src = "x", Title = "Codex", What = _ => "new tokens per minute, this PC",
             Dial = Primary, Ring = d => Frac(d.At("dial", "ring", "value").Num(), 2000, true),
             SparkUnit = "tokens/min", SparkFloor = 1000, Rows = RowsCodexMinute },
-        new Module { Id = "a", Src = "a", Title = "VPS (Hermes)", What = _ => "metered spend, estimated",
-            Dial = Primary, Ring = d => Frac(d.At("dial", "ring", "value").Num(), 1000000, true), Digits = 2,
-            Unit = d => "USD per hour, " + (d.At("detail", "cost_basis").Str() is { Length: > 0 } b ? b : "estimated"),
-            SparkUnit = "USD/hr estimated", SparkFloor = 0.5, Rows = RowsA,
-            Buttons = { new Btn { Target = "vps", Label = "PAUSE HERMES (NEW RUNS)" },
-                        new Btn { Target = "vps-resume", Label = "RESUME HERMES", Resume = true } } },
+        // Token burn, not spend (11/11/2026): the wallet does not move while the plan covers use.
+        new Module { Id = "a", Family = "Local model", Src = "a", Title = "Local model", What = _ => "new tokens per minute",
+            Dial = Primary, Ring = d => Frac(d.At("dial", "ring", "value").Num(), 60, true),
+            SparkUnit = "tokens/min", SparkFloor = 1000, Rows = RowsA,
+            Buttons = { new Btn { Target = "model", Label = "PAUSE MODEL (NEW RUNS)" },
+                        new Btn { Target = "model-resume", Label = "RESUME MODEL", Resume = true } } },
         new Module { Id = "b", Family = "This PC (GPU)", Model = d => d.At("detail", "gpu").Str(), Src = "b", Title = "This PC (GPU)", What = _ => "local hardware load, watts",
             Dial = Primary,
             Ring = d => d.At("dial", "ring", "value").Num() is double v ? Frac(v, 500, true)
@@ -256,21 +256,13 @@ static class Catalog
 
     static List<Row> RowsA(JsonNode d)
     {
-        var x = d.At("detail"); var f = d.At("dial", "fuel"); var h = new List<Row>();
-        var low = x.At("low_fuel").Truthy();
-        h.Add(new("credits remaining", f.At("value").Num() is double fv ? F(fv, 2) + " USD" + (low ? " (LOW)" : "") : "not available", low));
-        if (x.At("fuel_age_s").Num() is double fa) h.Add(new("balance read", F(fa / 60, 0) + " min ago"));
-        // Where the needle comes from, as the VPS says it: "store" = 30 s window over finished turns, "stream" = live.
-        if (x.At("per_second_basis").Str() is { Length: > 0 } basis) h.Add(new("needle read from",
-            basis == "stream" ? "the live stream" : basis == "store" ? "finished turns, 30 s window (not live)" : basis));
-        if (x.At("warming").Truthy()) h.Add(new("window", "still filling; needle reads low", true));
-        h.Add(new("tokens per minute, in / out", $"{F(x.At("tokens_in_per_min").Num(), 0)} / {F(x.At("tokens_out_per_min").Num(), 0)}"));
+        var x = d.At("detail"); var h = new List<Row>();
+        h.Add(new("per minute, in / out", $"{F(x.At("tokens_in_per_min").Num(), 0)} / {F(x.At("tokens_out_per_min").Num(), 0)}"));
         h.Add(new("cache read per minute", F(x.At("cache_read_per_min").Num(), 0)));
         h.Add(new("API calls per minute", F(x.At("api_calls_per_min").Num(), 1)));
-        h.Add(new("active sessions", F(x.At("active_sessions").Num(), 0)));
-        if (x.At("models") is JsonArray models)
-            foreach (var m in models.Take(3)) h.Add(new(m.At("model").Str() ?? "", F(m.At("usd_per_hr").Num(), 2) + " USD/hr estimated"));
-        if (x.At("period_end").Str() is { Length: > 0 } pe) h.Add(new("period ends", pe));
+        if (x.At("last_activity_age_s").Num() is double la) h.Add(new("last activity", Ago(la)));
+        if (x.At("export_age_s").Num() is double ea) h.Add(new("counts read", Ago(ea)));
+        h.Add(new("counted from", x.At("token_source").Str() ?? ""));
         return h;
     }
 
@@ -321,7 +313,7 @@ static class Catalog
         h.Add(new("last model", x.At("model").Str() is { Length: > 0 } m ? m : "none seen yet"));
         h.Add(new("read from", t.At("basis").Str() ?? ""));
         h.Add(new("Codex", "no first-token signal"));
-        h.Add(new("Hermes", "waits on its stream hook"));
+        h.Add(new("Local model", "waits on its stream hook"));
         return h;
     }
 }

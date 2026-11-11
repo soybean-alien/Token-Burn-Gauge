@@ -602,7 +602,7 @@ def read_tap(port):
 
 
 class Agents:
-    def __init__(self, cfg, proc_reader=None, killer=taskkill, abort_local=None, kill_vps=None,
+    def __init__(self, cfg, proc_reader=None, killer=taskkill, abort_local=None, pause_remote=None,
                  tap_reader=None):
         self.cfg = {**DEFAULTS, **cfg}
         c = self.cfg
@@ -618,7 +618,7 @@ class Agents:
         self.first_id = None       # tap request id already put in the history
         self.ttft_spark = deque(maxlen=60)
         self.proc_reader = proc_reader or _win_process_reader()
-        self.killer, self.abort_local, self.kill_vps = killer, abort_local, kill_vps
+        self.killer, self.abort_local, self.pause_remote = killer, abort_local, pause_remote
         self.watch = {k: ProcWatch(k, c["active_window_s"], c["active_min_bytes"],
                                     c["active_min_seconds"])
                       for k in ("claude", "codex")}
@@ -681,7 +681,7 @@ class Agents:
             # every second and scaled by the learned ratio.
             # Output tokens only: prompt and cache tokens are not generated a second
             # at a time, and counting them read a 54,000-token cached prompt as
-            # thousands of tokens per second (caught by Hermes, 11/11/2026).
+            # thousands of tokens per second (found 11/11/2026).
             out10 = sum(e[2] for e in self.claude.events if now - e[0] <= 10)
             per_second = {"value": round(w.ops * ratio) if w.streaming
                           else (None if err else round(out10 / 10)),
@@ -792,10 +792,10 @@ class Agents:
             return {"ok": True, "killed": n,
                     "message": f"{n} local generation(s) cut off" if n
                     else "no local generation was running through the proxy"}
-        if target in ("vps", "vps-resume"):   # passed on; the VPS decides what it holds
-            route = "/resume" if target == "vps-resume" else "/kill"
-            return self.kill_vps(route) if self.kill_vps else {
-                "ok": False, "message": "no VPS kill switch is set up"}
+        if target in ("model", "model-resume"):   # passed on; the remote host decides what it holds
+            route = "/resume" if target == "model-resume" else "/kill"
+            return self.pause_remote(route) if self.pause_remote else {
+                "ok": False, "message": "no pause switch is set up"}
         if target not in self.watch:
             return {"ok": False, "message": "unknown target"}
         pids = self.watch[target].active()

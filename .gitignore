@@ -14,3 +14,4 @@ artifacts/
 app/app-window.png
 .claude/
 tools/banner/hero.html
+.token-savior-cache.json

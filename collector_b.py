@@ -352,33 +352,115 @@ class History:
             f.write(json.dumps(line) + "\n")
 
 
-class VpsRelay:
-    """Fetches metrics-a.json from the VPS on demand so the page has one origin.
+class UsageTail:
+    """The model's token burn, in new tokens per minute (changed 11/11/2026: the
+    dial was metered spend; the wallet does not move while the plan covers use).
 
-    A failure is answered as 200 with source_ok false, so the page shows OFFLINE
-    with the reason and the browser console stays clean.
+    Read from the usage export Quotalis keeps on this PC; `usage_export_path` in
+    config.json names the file (rewritten about once a minute). Opened read-only;
+    counters and timestamps only. The rate is the change between the two newest
+    exports, so it moves once a minute. A missing or old export is answered with
+    source_ok false: the dial shows OFFLINE with the reason, never zero.
     """
 
-    def __init__(self, url):
-        self.url = url
+    def __init__(self, cfg, path=None, clock=time.time):
+        path = path or cfg.get("usage_export_path")
+        self.path = Path(path) if path else None
+        self.cfg, self.clock = cfg, clock
         self.lock = threading.Lock()
         self.at = 0.0
-        self.result = self.offline("vps_metrics_url is not set in config.json")
+        self.last = None        # newest export: (generated_at, counter rows)
+        self.rates = None       # per minute, between the two newest exports
+        self.spark = deque(maxlen=60)
+        self.seq = 0
+        self.result = self.offline("no reading yet")
 
     @staticmethod
     def offline(reason):
-        return 200, json.dumps({"host": "vps", "source_ok": False, "error": reason}).encode()
+        return 200, json.dumps({"host": "model", "source_ok": False, "error": reason}).encode()
+
+    FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "api_call_count")
+
+    def read(self):
+        d = json.loads(self.path.read_text(encoding="utf-8"))
+        # One counter row per model, provider, task and session.
+        rows = {(m.get("model"), m.get("billing_provider"), m.get("task"), m.get("session")):
+                ([int(m.get(k) or 0) for k in self.FIELDS], m.get("first_seen"))
+                for m in d.get("model_usage") or []}
+        return (float(d["generated_at"]), rows), (d.get("current_model") or {}).get("model"), d.get("last_activity_at")
+
+    @staticmethod
+    def step(prev, cur):
+        """New counts between two exports, row by row, so a row the export drops
+        (old sessions age out) does not hide what the others did. A row that is
+        new counts in full only if it began after the previous export. A row
+        whose counter went down is not understood: no rate for that step."""
+        new = [0, 0, 0, 0]
+        for key, (now_counts, first_seen) in cur[1].items():
+            if key in prev[1]:
+                d = [b - a for a, b in zip(prev[1][key][0], now_counts)]
+                if min(d) < 0:
+                    return None
+            elif isinstance(first_seen, (int, float)) and first_seen >= prev[0] - 120:
+                d = now_counts
+            else:
+                continue
+            new = [x + y for x, y in zip(new, d)]
+        return new
+
+    def payload(self):
+        c, now = self.cfg, self.clock()
+        if self.path is None:
+            return self.offline("usage_export_path is not set in config.json")
+        try:
+            sample, model, active_at = self.read()
+        except FileNotFoundError:
+            return self.offline("usage export not found (Quotalis writes it)")
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+            return self.offline(f"usage export could not be read ({type(e).__name__})")
+        if self.last is None or sample[0] != self.last[0]:
+            prev, self.last = self.last, sample
+            minutes = (sample[0] - prev[0]) / 60 if prev else 0
+            new = self.step(prev, sample) if minutes > 0 else None
+            self.rates = [x / minutes for x in new] if new else None
+            if self.rates:
+                self.spark.append(round(self.rates[0] + self.rates[1]))
+            self.seq += 1
+        age = now - sample[0]
+        if age > c.get("usage_stale_after_s", 180):
+            return self.offline(f"usage export is {age / 60:.0f} min old "
+                                "(Quotalis writes it once a minute)")
+        r = self.rates
+        value = round(r[0] + r[1]) if r else None
+        burn, red = c.get("usage_burn_tokens_per_min", 5000), c.get("usage_redline_tokens_per_min", 50000)
+        state = ("IDLE" if not value else "REDLINE" if value >= red
+                 else "BURNING" if value >= burn else "WARM")
+        return 200, json.dumps({
+            "ts": now, "seq": self.seq, "host": "model", "source_ok": True,
+            "stale_after_s": 150, "poll_s": 5, "error": None,
+            "dial": {"primary": {"label": "new tokens per minute" if r else
+                                 "new tokens per minute, waiting for a second reading",
+                                 "value": value, "unit": "tokens/min", "log": True,
+                                 "scale_max": c.get("usage_scale_max_tokens_per_min", 100000),
+                                 "redline": red},
+                     "state": state, "ring": {"value": round(r[3], 1) if r else None}},
+            # Shown on the board without the provider prefix, in its own fixed colour (tier 5).
+            "detail": {"model": (model or "").rsplit("/", 1)[-1], "model_tier": 5,
+                       "tokens_in_per_min": round(r[0]) if r else None,
+                       "tokens_out_per_min": round(r[1]) if r else None,
+                       "cache_read_per_min": round(r[2]) if r else None,
+                       "api_calls_per_min": round(r[3], 1) if r else None,
+                       "export_age_s": round(age),
+                       "last_activity_age_s": round(now - active_at) if active_at else None,
+                       "spark": list(self.spark),
+                       "token_source": "the usage export kept by Quotalis (read-only); "
+                                       "it changes once a minute"},
+        }).encode()
 
     def get(self):
-        if not self.url:
-            return self.result
         with self.lock:
-            if time.monotonic() - self.at >= 1.5:
-                try:
-                    with urllib.request.urlopen(self.url, timeout=3) as r:
-                        self.result = (200, r.read())
-                except (OSError, ValueError) as e:
-                    self.result = self.offline(f"VPS unreachable ({type(e).__name__})")
+            if time.monotonic() - self.at >= 5:
+                self.result = self.payload()
                 self.at = time.monotonic()
             return self.result
 
@@ -399,34 +481,34 @@ def abort_local(port):
         return None
 
 
-def kill_vps(cfg, route="/kill"):
-    """Presses pause (`/kill`) or resume (`/resume`) on the VPS collector, next to
-    its metrics file. Hermes pauses new runs; a turn already running finishes.
+def pause_remote(cfg, route="/kill"):
+    """Presses pause (`/kill`) or resume (`/resume`) on the remote host collector, next to
+    its metrics file. the agent pauses new runs; a turn already running finishes.
 
-    The shared secret `vps_kill_token` stays in config.json on both machines;
+    The shared secret `remote_pause_token` stays in config.json on both machines;
     it travels in a header over Tailscale and is never served to the page.
     """
-    url, secret = cfg.get("vps_metrics_url"), cfg.get("vps_kill_token")
+    url, secret = cfg.get("remote_url"), cfg.get("remote_pause_token")
     if not url or not secret:
-        return {"ok": False, "message": "vps_metrics_url or vps_kill_token is not set "
+        return {"ok": False, "message": "remote_url or remote_pause_token is not set "
                                         "in config.json"}
     word = "resume" if route == "/resume" else "pause"
     req = urllib.request.Request(
         urlsplit(url)._replace(path=route, query="").geturl(), data=b"", method="POST",
         headers={"X-Gauge-Kill": "1", "X-Gauge-Kill-Token": secret})
     try:
-        # 10 s: the VPS gives its own `hermes pause` call up to 5 s before it answers.
+        # 10 s: the remote host gives its own pause call up to 5 s before it answers.
         with urllib.request.urlopen(req, timeout=10) as r:
             answer = json.loads(r.read())
     except urllib.error.HTTPError as e:
-        return {"ok": False, "message": f"the VPS refused the {word} request (HTTP {e.code})"}
+        return {"ok": False, "message": f"the remote host refused the {word} request (HTTP {e.code})"}
     except (OSError, ValueError) as e:
-        return {"ok": False, "message": f"VPS unreachable, {word} not sent ({type(e).__name__})"}
+        return {"ok": False, "message": f"remote host unreachable, {word} not sent ({type(e).__name__})"}
     if not isinstance(answer, dict):
-        return {"ok": False, "message": "the VPS gave an answer that is not an object"}
-    log.warning("kill switch: vps %s, answer %s", word, answer.get("message"))
+        return {"ok": False, "message": "the remote host gave an answer that is not an object"}
+    log.warning("kill switch: remote %s, answer %s", word, answer.get("message"))
     return {"ok": bool(answer.get("ok")), "killed": answer.get("killed"),
-            "message": str(answer.get("message") or "the VPS gave no message")[:200]}
+            "message": str(answer.get("message") or "the remote host gave no message")[:200]}
 
 
 def make_handler(collector, relay, token, agents=None):
@@ -503,9 +585,9 @@ def main():
     cpu = CpuWatch(cfg)
     threading.Thread(target=cpu.run, daemon=True).start()
     collector = Collector(cfg, cfg_path, cpu=cpu)
-    relay = VpsRelay(cfg.get("vps_metrics_url", ""))
+    relay = UsageTail(cfg)
     agents = Agents(cfg, abort_local=lambda: abort_local(cfg["proxy_port"]),
-                    kill_vps=lambda route: kill_vps(cfg, route))
+                    pause_remote=lambda route: pause_remote(cfg, route))
     try:
         server = Server(("127.0.0.1", cfg["page_port"]),
                         make_handler(collector, relay, cfg["remote_token"], agents))

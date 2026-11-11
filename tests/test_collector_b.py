@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -156,12 +157,91 @@ class CollectorTest(unittest.TestCase):
             self.assertEqual(json.loads(lines[0])["w"], 42.0)
 
 
+class UsageTailTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.path = Path(self.dir.name) / "usage.json"
+        self.now = 1000.0
+        self.tail = cb.UsageTail({}, path=self.path, clock=lambda: self.now)
+
+    def export(self, at, tin, tout, calls=0):
+        self.path.write_text(json.dumps({
+            "generated_at": at, "last_activity_at": at, "current_model": {"model": "some/model"},
+            "model_usage": [{"input_tokens": tin, "output_tokens": tout,
+                             "cache_read_tokens": 0, "api_call_count": calls}]}), encoding="utf-8")
+
+    def read(self):
+        return json.loads(self.tail.payload()[1])
+
+    def test_no_path_set_is_offline(self):
+        d = json.loads(cb.UsageTail({}).payload()[1])
+        self.assertFalse(d["source_ok"])
+        self.assertIn("not set", d["error"])
+
+    def test_missing_export_is_offline(self):
+        d = self.read()
+        self.assertFalse(d["source_ok"])
+        self.assertIn("not found", d["error"])
+
+    def test_first_reading_has_no_value(self):
+        self.export(1000, 5000, 100)
+        d = self.read()
+        self.assertTrue(d["source_ok"])
+        self.assertIsNone(d["dial"]["primary"]["value"])
+
+    def test_rate_is_the_change_between_two_exports(self):
+        self.export(1000, 5000, 100, 10)
+        self.read()
+        self.now = 1120.0
+        self.export(1120, 9000, 300, 14)  # two minutes later: +4000 in, +200 out, +4 calls
+        d = self.read()
+        self.assertEqual(d["dial"]["primary"]["value"], 2100)
+        self.assertEqual(d["detail"]["tokens_in_per_min"], 2000)
+        self.assertEqual(d["detail"]["api_calls_per_min"], 2.0)
+        self.assertEqual(d["seq"], 2)
+        self.assertEqual(self.read()["seq"], 2)  # same export read again: seq holds, so the app can call it STALE
+
+    def test_totals_going_down_give_no_rate(self):
+        self.export(1000, 5000, 100)
+        self.read()
+        self.now = 1060.0
+        self.export(1060, 10, 0)
+        self.assertIsNone(self.read()["dial"]["primary"]["value"])
+
+    def rows(self, at, rows):
+        self.path.write_text(json.dumps({"generated_at": at, "model_usage": [
+            {"session": s, "input_tokens": n, "output_tokens": 0, "first_seen": first} for s, n, first in rows]}),
+            encoding="utf-8")
+
+    def test_a_dropped_row_does_not_hide_the_others(self):
+        self.rows(1000, [("old", 900000, 1), ("live", 1000, 900)])
+        self.read()
+        self.now = 1060.0
+        self.rows(1060, [("live", 1500, 900)])  # "old" aged out of the export; "live" did 500
+        self.assertEqual(self.read()["dial"]["primary"]["value"], 500)
+
+    def test_a_new_row_counts_only_if_it_began_after_the_last_export(self):
+        self.rows(1000, [("live", 1000, 900)])
+        self.read()
+        self.now = 1060.0
+        self.rows(1060, [("live", 1000, 900), ("fresh", 300, 1030), ("backfilled", 70000, 5)])
+        self.assertEqual(self.read()["dial"]["primary"]["value"], 300)
+
+    def test_old_export_is_offline_not_zero(self):
+        self.export(1000, 5000, 100)
+        self.now = 1000.0 + 600
+        d = self.read()
+        self.assertFalse(d["source_ok"])
+        self.assertIn("10 min old", d["error"])
+
+
 class ServerTest(unittest.TestCase):
     def setUp(self):
         self.col = make()
         self.col.step(1000.0)
         self.server = cb.Server(("127.0.0.1", 0),
-                                cb.make_handler(self.col, cb.VpsRelay(""), "test-token"))
+                                cb.make_handler(self.col, cb.UsageTail({}, path="no-such-export.json"), "test-token"))
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
@@ -186,10 +266,10 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(json.loads(body)["host"])
         self.assertEqual(headers["Cache-Control"], "no-store")
         self.assertEqual(self.get("/")[0], 200)
-        status, body, _ = self.get("/metrics-a.json")  # not configured: OFFLINE, not a zero
+        status, body, _ = self.get("/metrics-a.json")  # no export: OFFLINE, not a zero
         self.assertEqual(status, 200)
         self.assertFalse(json.loads(body)["source_ok"])
-        self.assertIn("not set", json.loads(body)["error"])
+        self.assertIn("not found", json.loads(body)["error"])
 
     def test_config_and_other_files_are_never_served(self):
         for path in ("/config.json", "/collector_b.py", "/history-b.jsonl", "/../config.json"):
@@ -205,7 +285,7 @@ class ServerTest(unittest.TestCase):
 
     def test_busy_port_is_refused(self):
         with self.assertRaises(OSError):
-            cb.Server(("127.0.0.1", self.port), cb.make_handler(self.col, cb.VpsRelay(""), "t"))
+            cb.Server(("127.0.0.1", self.port), cb.make_handler(self.col, cb.UsageTail({}, path="no-such-export.json"), "t"))
 
     def test_payload_carries_no_token(self):
         self.assertNotIn(b"test-token", self.get("/metrics-b.json")[1])

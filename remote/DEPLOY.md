@@ -1,17 +1,17 @@
-# Token-burn gauge: deploying the VPS half
+# Token-burn gauge: deploying the remote host half
 
 Written 11/11/2026 by Claude Code on the Windows PC. These files were tested only on
-Windows against a fixture database. Nothing here has run on the VPS. Target folder:
-`/opt/data/scripts/token-gauge/` (Hermes's lane).
+Windows against a fixture database. Nothing here has run on the remote host. Target folder:
+`/opt/data/scripts/token-gauge/` (the agent's lane).
 
 ## Files to copy
 
 | File | From (Windows) | Purpose |
 |---|---|---|
-| `collector_a.py` | `%USERPROFILE%\.token-gauge\vps\` | the collector |
-| `config.json` | `%USERPROFILE%\.token-gauge\vps\` | cadences, thresholds, paths |
-| `run-a.sh` | `%USERPROFILE%\.token-gauge\vps\` | cron launcher (LF line endings) |
-| `gauge.html` | `%USERPROFILE%\.token-gauge\` | the page, for viewing on the VPS itself |
+| `collector_a.py` | `%USERPROFILE%\.token-gauge\remote\` | the collector |
+| `config.json` | `%USERPROFILE%\.token-gauge\remote\` | cadences, thresholds, paths |
+| `run-a.sh` | `%USERPROFILE%\.token-gauge\remote\` | cron launcher (LF line endings) |
+| `gauge.html` | `%USERPROFILE%\.token-gauge\` | the page, for viewing on the remote host itself |
 
 ## Steps
 
@@ -26,14 +26,14 @@ Windows against a fixture database. Nothing here has run on the VPS. Target fold
      `period_end` and `ts` from it.
 4. Run it once by hand: `./run-a.sh &`, then `cat metrics-a.json` after 10 s. Expect
    `"source_ok": true`, a `seq` that rises every 5 s, and an estimated USD per hour of 0
-   while Hermes is idle.
+   while the agent is idle.
 5. Run the plan's checks 2 to 8 (section 4.1). The same checks passed here against the
    fixture; check 4 can use `detail.since_start.output_tokens`, which is the exact sum of
    output-token deltas since the collector started.
 6. Install the cron entry: `* * * * * /opt/data/scripts/token-gauge/run-a.sh`.
    The collector takes `collector-a.lock` and a second copy exits at once, so cron only
    restarts it after a crash.
-7. Page on the VPS: `http://127.0.0.1:8830/` (the collector serves `gauge.html` and
+7. Page on the remote host: `http://127.0.0.1:8830/` (the collector serves `gauge.html` and
    `metrics-a.json` on loopback only; set `"serve_port": null` to turn that off).
 
 ## Wallet balance (decision D7)
@@ -45,16 +45,16 @@ command that prints one JSON object with `credits_remaining` (and optionally
 `period_end`) on stdout. That command must own its own auth: `run-a.sh` starts the
 collector with an empty environment, and no credential belongs in `config.json`.
 
-## Letting the Windows page read the VPS dial
+## Letting the Windows page read the remote host dial
 
 The Windows collector fetches `metrics-a.json` server-side from the URL in its
-`vps_metrics_url` setting. The VPS server binds loopback only, so expose it to the
+`remote_url` setting. The remote host server binds loopback only, so expose it to the
 tailnet and nowhere else, for example:
 
     tailscale serve --bg --tcp 8830 tcp://127.0.0.1:8830
 
-Then on the Windows PC set `"vps_metrics_url": "http://<vps-address>:8830/metrics-a.json"`
-in `%USERPROFILE%\.token-gauge\config.json` and restart `collector_b.py`. If Hermes runs
+Then on the Windows PC set `"remote_url": "http://<remote-address>:8830/metrics-a.json"`
+in `%USERPROFILE%\.token-gauge\config.json` and restart `collector_b.py`. If the agent runs
 in a container, the port has to be published to the host's loopback first. This step was
 not tested.
 

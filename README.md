@@ -15,11 +15,11 @@ A small Windows desktop app that shows, on eight dials, how fast your AI tools a
 | GPU | watts, titled with the card's name | `nvidia-smi`, once a second |
 | CPU | watts, titled with the processor's name | Windows counters |
 | Time to first token | seconds | a local tap on your own requests |
-| VPS (Hermes) | metered spend, USD per hour, estimated | an optional collector on your own server |
+| Local model, per minute | tokens, titled with the model's name | a usage export [Quotalis](https://github.com/soybean-alien/Quotalis) keeps on this PC (`usage_export_path` in `config.json`), opened read-only; it moves once a minute |
 
 Model names are coloured by tier: purple for the top tier, then orange, yellow and blue. Effort levels use the same four colours. The tiers are one line each in `config.json` (`model_tiers`, `effort_tiers`).
 
-Claude Code, Codex and the local model each have a stop button, and Hermes has pause and resume. Every button needs two clicks: the first arms it for three seconds.
+Claude Code, Codex and local generation each have a stop button, and the local model dial has pause and resume. Every button needs two clicks: the first arms it for three seconds.
 
 ## Rules it keeps
 
@@ -45,7 +45,7 @@ Settings live in `config.json` beside the app. The installer writes it once from
 - **The app** (`app/TokenGauge`): C#, .NET 10, Windows Forms. It draws the dials itself with GDI+, with no browser engine, and reads four JSON files from `http://127.0.0.1:8830/` once a second.
 - **The collectors** (`collector_b.py`, `agents.py`, `tap.py`, `proxy.py`): Python, standard library only. They sample the sources above and serve the JSON.
 - **The page** (`gauge.html`): the same dials in a browser, kept as a fallback.
-- **The VPS collector** (`vps/`): optional; see `vps/DEPLOY.md`.
+- **The remote collector** (`remote/`): optional; see `remote/DEPLOY.md`.
 
 ## Build and test
 
@@ -61,5 +61,5 @@ The last command needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) and wri
 
 - Made by **soybean_alien**. Licensed under the **MIT License** (see [LICENSE](LICENSE)).
 - Built on [.NET](https://github.com/dotnet/runtime) and [Windows Forms](https://github.com/dotnet/winforms), with [Python](https://www.python.org/) for the collectors and [Inno Setup](https://jrsoftware.org/isinfo.php) for the installer.
-- Token Burn Gauge is an unofficial personal tool. It isn't affiliated with Anthropic, OpenAI, Nous Research, NVIDIA or AMD.
+- Token Burn Gauge is an unofficial personal tool. It isn't affiliated with Anthropic, OpenAI, NVIDIA or AMD.
 - **AI disclosure:** Token Burn Gauge was designed with and written by **Claude Code (Anthropic, Claude Fable 5.2)**, directed and tested by the author on Windows 11. The dials were checked against live Claude Code and Codex sessions on the author's PC; the installer has been built but not yet tested on a second PC.

@@ -1,4 +1,4 @@
-"""Token-burn gauge: VPS collector (Hermes side).
+"""Token-burn gauge: remote collector.
 
 Every few seconds: read session_model_usage from state.db (read-only), diff it
 against the previous sample, and write metrics-a.json in the shared contract
@@ -111,7 +111,7 @@ def read_wallet_file(path):
 
 
 def read_wallet_command(cmd):
-    """Optional: a command owned by Hermes that prints one JSON snapshot on stdout."""
+    """Optional: a command owned by the agent that prints one JSON snapshot on stdout."""
     out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=20)
     snap = json.loads(out.stdout)
     return {"credits_remaining": snap["credits_remaining"],
@@ -194,7 +194,7 @@ class Collector:
         self.seq += 1
         top = sorted(models.items(), key=lambda kv: -kv[1]["usd"])[:5]
         payload = {
-            "ts": now, "seq": self.seq, "host": "vps", "source_ok": True,
+            "ts": now, "seq": self.seq, "host": "model", "source_ok": True,
             "stale_after_s": cfg["stale_after_s"], "poll_s": 2,
             "dial": {
                 "primary": {"label": "USD per hour", "value": usd_hr, "unit": "$/hr",
@@ -232,7 +232,7 @@ class Collector:
         """Keep the last good payload (same ts and seq, so the page goes STALE) and say why."""
         if self.last_payload is not None:
             return {**self.last_payload, "error": msg}
-        return {"ts": now, "seq": 0, "host": "vps", "source_ok": False,
+        return {"ts": now, "seq": 0, "host": "model", "source_ok": False,
                 "stale_after_s": self.cfg["stale_after_s"], "poll_s": 2,
                 "dial": {"primary": {"label": "USD per hour", "value": None, "unit": "$/hr",
                                      "scale_max": self.cfg["scale_max_usd_per_hr"], "log": True},

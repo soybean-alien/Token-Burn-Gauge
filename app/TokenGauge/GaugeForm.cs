@@ -62,10 +62,10 @@ sealed class GaugeForm : Form
     {
         "IDLE" => Hex(0x5b6472), "WARM" => Hex(0xffd446), "BURNING" => Hex(0xff8a3d), "REDLINE" => Redline, _ => DeadC,
     };
-    // Model tiers: 1 purple (top), 2 orange, 3 yellow, 4 blue (bottom); anything else keeps the text colour.
+    // Model tiers: 1 purple (top), 2 orange, 3 yellow, 4 blue (bottom); 5 neon purple, the fixed local model; anything else keeps the text colour.
     static Color TierColor(int tier) => tier switch
     {
-        1 => Hex(0xb48cff), 2 => Hex(0xff8a3d), 3 => Hex(0xffd446), 4 => Hex(0x5aa9ff), _ => Txt,
+        1 => Hex(0xb48cff), 2 => Hex(0xff8a3d), 3 => Hex(0xffd446), 4 => Hex(0x5aa9ff), 5 => Hex(0xd400ff), _ => Txt,
     };
     static Color A(Color c, double a) => Color.FromArgb((int)Math.Clamp(a * 255, 0, 255), c);
 
@@ -83,7 +83,7 @@ sealed class GaugeForm : Form
     RectangleF _header, _footer;
 
     const string Sub = "Four sources, read separately. A source that stops reporting says so; it never reads as zero.";
-    const string Foot = "The kill buttons end work in flight: unsaved output of that reply is lost. The Hermes button is a pause: no new runs start, a turn already running finishes, and Hermes stays paused until RESUME is pressed. No model calls anywhere in this pipeline. Counters and timestamps only. Dollar rates are estimates, not billed money.";
+    const string Foot = "The kill buttons end work in flight: unsaved output of that reply is lost. The pause button starts no new runs: a turn already running finishes, and the model stays paused until RESUME is pressed. No model calls anywhere in this pipeline. Counters and timestamps only.";
 
     [DllImport("dwmapi.dll")]
     static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);

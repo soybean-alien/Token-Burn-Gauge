@@ -1,4 +1,4 @@
-"""Tests for the VPS collector, run against a fixture SQLite database."""
+"""Tests for the remote host collector, run against a fixture SQLite database."""
 import json
 import sqlite3
 import sys
@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "vps"))
+sys.path.insert(0, str(ROOT / "remote"))
 import collector_a as ca  # noqa: E402
 
 COLUMNS = """session_id TEXT, model TEXT, billing_provider TEXT, billing_base_url TEXT,
@@ -29,13 +29,13 @@ class Base(unittest.TestCase):
         con.execute(f"CREATE TABLE session_model_usage ({COLUMNS})")
         con.commit()
         con.close()
-        self.wallet = self.dir / "nous-spend.json"
+        self.wallet = self.dir / "spend.json"
         self.wallet.write_text(json.dumps([
             {"ts": T0 - 900, "period_used": 1.0, "credits_remaining": 7.5, "purchased": 10,
              "period_end": "2026-11-22T03:24:36Z"},
             {"ts": T0 - 10, "period_used": 1.4, "credits_remaining": 7.1, "purchased": 10,
              "period_end": "2026-11-22T03:24:36Z"}]))
-        self.cfg = json.loads((ROOT / "vps" / "config.json").read_text())
+        self.cfg = json.loads((ROOT / "remote" / "config.json").read_text())
         self.cfg.update(db_path=str(self.db), wallet_path=str(self.wallet))
         self.put("s1", "model-x", "chat", out=1000, inp=5000, cost=0.10, last_seen=T0 - 3600)
 
@@ -48,7 +48,7 @@ class Base(unittest.TestCase):
                     (sid, model, task))
         con.execute(
             "INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (sid, model, "nous", "https://example.invalid", "metered", task, calls, inp, out,
+            (sid, model, "provider", "https://example.invalid", "metered", task, calls, inp, out,
              cache, 0, 0, cost, 0.0, "estimated", "provider_models_api", T0 - 7200, last_seen))
         con.commit()
         con.close()
@@ -118,7 +118,7 @@ class RateTest(Base):
         p = c.sample(T0 + 35)
         self.assertEqual(p["dial"]["primary"]["value"], 0)  # the burst has left the window
 
-    def test_states_by_lowering_thresholds(self):  # acceptance step 18, VPS side
+    def test_states_by_lowering_thresholds(self):  # acceptance step 18, remote host side
         self.put("s1", "model-x", "chat", out=1000, cost=0.10)
         seen = []
         for burn, red in ((1000, 2000), (10, 2000), (10, 20)):
@@ -218,7 +218,7 @@ class PayloadTest(Base):
             self.assertNotIn(word, text.replace("tokens", ""))
 
     def test_source_makes_no_network_or_model_calls(self):
-        src = (ROOT / "vps" / "collector_a.py").read_text()
+        src = (ROOT / "remote" / "collector_a.py").read_text()
         for bad in ("urllib.request", "http.client", "requests", "anthropic", "openai", "socket."):
             self.assertNotIn(bad, src)
 

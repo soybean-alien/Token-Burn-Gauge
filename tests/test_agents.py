@@ -372,7 +372,7 @@ class KillEndpointTests(Base):
         self.agents.kill = lambda target: self.calls.append(target) or {"ok": True}
         col = type("C", (), {"payload_bytes": b"{}"})()
         self.srv = collector_b.Server(("127.0.0.1", 0), collector_b.make_handler(
-            col, collector_b.VpsRelay(""), "tok", self.agents))
+            col, collector_b.UsageTail({}, path="no-such-export.json"), "tok", self.agents))
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.addCleanup(self.srv.server_close)
         self.addCleanup(self.srv.shutdown)
