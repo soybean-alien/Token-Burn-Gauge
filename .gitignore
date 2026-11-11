@@ -1,0 +1,15 @@
+# Local state, logs and secrets: never committed
+/config.json
+*.log
+metrics-*.json
+history-*.jsonl
+__pycache__/
+*.pyc
+# Build output
+bin/
+obj/
+.vs/
+artifacts/
+# Local captures
+app/app-window.png
+.claude/

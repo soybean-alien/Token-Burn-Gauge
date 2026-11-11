@@ -1,0 +1,18 @@
+{
+  "host": "my-pc",
+  "page_port": 8830,
+  "proxy_port": 8831,
+  "runtime_url": "http://127.0.0.1:1234",
+  "vps_metrics_url": "",
+  "remote_token": "",
+  "gpu_s": 1,
+  "poll_s": 1,
+  "stale_after_s": 5,
+  "idle_watts": 44.3,
+  "warm_watts_over_idle": 15,
+  "burn_watts_over_idle": 50,
+  "burn_sustain_s": 3,
+  "redline_watts_frac": 0.9,
+  "redline_sustain_s": 30,
+  "history_days": 30
+}

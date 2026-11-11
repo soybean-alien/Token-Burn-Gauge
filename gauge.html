@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0a0b">
+<title>Token-burn gauge</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0a0b; --panel: #101114; --line: #1a2230; --text: #e8e4d8; --dim: #6b7484;
+    --tier1: #b48cff; --tier2: #ff8a3d; --tier3: #ffd446; --tier4: #5aa9ff;
+    --idle: #5b6472; --warm: #ffd446; --burning: #ff8a3d; --redline: #ff3b30; --dead: #3a4150;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+    --serif: "Instrument Serif", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  /* Onyx black on the root too, so nothing white shows behind or beyond the page. */
+  html { background: var(--bg); min-height: 100%; }
+  /* Sized for half a screen: four modules across, two rows, nothing to scroll at about 950 by 1000. */
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono);
+         font-size: clamp(9.5px, 1.16vw, 13px); line-height: 1.25; }
+  header { text-align: center; padding: 6px 10px 5px; }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: 2em; margin: 0; letter-spacing: .01em; }
+  .sub { color: var(--dim); margin: 1px 0 0; }
+  .dials { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+           padding: 0 6px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 620px) { .dials { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .dial { --c: var(--idle); background: var(--panel); border: 1px solid var(--line);
+          border-radius: 9px; padding: 6px 8px 7px; min-width: 0; display: flex; flex-direction: column; }
+  .dial h2 { font-family: var(--serif); font-weight: 400; font-size: 1.5em; margin: 0; line-height: 1.1; overflow-wrap: anywhere; }
+  .dial .effort { margin: 0; font-weight: 700; letter-spacing: .06em; }
+  .dial .effort:empty { display: none; }
+  .dial .what { color: var(--dim); margin: 0; overflow-wrap: anywhere; }
+  svg.face { display: block; width: 100%; max-width: 15.5em; height: auto; margin: 0 auto; }
+  .tick { stroke: #2b3546; stroke-width: 1.5; }
+  .tick.major { stroke: #56627a; stroke-width: 2; }
+  .band { fill: none; stroke: var(--redline); stroke-width: 5; opacity: .75; }
+  .ring-bg { fill: none; stroke: #121925; stroke-width: 7; }
+  .ring { fill: none; stroke: var(--c); stroke-width: 7; stroke-linecap: round; transition: stroke-dashoffset .5s, stroke .3s; }
+  .ring.flash { animation: flash .3s ease-out 1; }
+  @keyframes flash { from { stroke-width: 20; stroke: #fff; } to { stroke-width: 7; } }
+  .needle { stroke: var(--c); stroke-width: 3; stroke-linecap: round; transform-origin: 160px 160px;
+            transition: transform .5s cubic-bezier(.3,1.3,.5,1), stroke .3s, opacity .3s; }
+  .hub { fill: var(--c); transition: fill .3s; }
+  .num { font-family: var(--mono); font-size: 46px; font-weight: 600; fill: var(--text); text-anchor: middle; }
+  .state { font-size: 19px; font-weight: 700; letter-spacing: .18em; fill: var(--c); text-anchor: middle; transition: fill .3s; }
+  .scale { font-size: 13px; fill: var(--dim); text-anchor: middle; }
+  .unit { color: var(--dim); text-align: center; min-height: 1.25em; }
+  .dead { --c: var(--dead); }
+  .dead svg .num, .dead .rows { opacity: .45; }
+  .dead svg.spark, .dead .fuelbar { filter: grayscale(1); opacity: .4; }
+  svg.spark { display: block; width: 100%; height: 1.7em; margin-top: 2px; }
+  svg.spark polyline { fill: none; stroke: var(--c); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .cap { color: var(--dim); font-size: .9em; }
+  .why { color: var(--dim); overflow-wrap: anywhere; }
+  .rows { margin-top: 3px; border-top: 1px solid var(--line); padding-top: 3px; font-size: .93em; }
+  .row { display: flex; justify-content: space-between; gap: 6px; padding: .5px 0; }
+  .row span:first-child { color: var(--dim); }
+  .row span:last-child { text-align: right; overflow-wrap: anywhere; }
+  .fuelbar { height: 4px; background: #121925; border-radius: 2px; margin: 2px 0 1px; overflow: hidden; }
+  .fuelbar i { display: block; height: 100%; background: var(--c); transition: width .5s; }
+  .low { color: var(--redline); font-weight: 700; }
+  .btns { margin-top: auto; padding-top: 4px; }
+  .kill { width: 100%; padding: 3px 6px; background: transparent; color: var(--redline);
+          border: 1px solid var(--redline); border-radius: 6px; font: 700 .9em var(--mono); letter-spacing: .1em;
+          cursor: pointer; }
+  .kill:hover, .kill.armed { background: var(--redline); color: #fff; }
+  .kill:disabled { opacity: .5; cursor: default; }
+  .kill.resume { color: var(--text); border-color: #56627a; margin-top: 3px; }
+  .kill.resume:hover, .kill.resume.armed { background: #56627a; color: #fff; }
+  .killmsg { color: var(--dim); font-size: .9em; }
+  footer { color: var(--dim); font-size: .85em; padding: 4px 10px 6px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Token-burn gauge</h1>
+  <p class="sub">Four sources, read separately. A source that stops reporting says so; it never reads as zero.</p>
+</header>
+<div class="dials" id="dials"></div>
+<footer>The kill buttons end work in flight: unsaved output of that reply is lost. The Hermes button is a pause: no new runs start, a turn already running finishes, and Hermes stays paused until RESUME is pressed. No model calls anywhere in this pipeline. Counters and timestamps only. Dollar rates are estimates, not billed money.</footer>
+
+<script>
+"use strict";
+const CX = 160, CY = 160, R = 120, SWEEP = 240, START = -120, REST_MS = 60000;
+
+// One entry per thing fetched. Several modules can read the same source.
+const SOURCES = {
+  c: { url: "metrics-c.json" },   // Claude Code
+  x: { url: "metrics-x.json" },   // Codex
+  a: { url: "metrics-a.json" },   // VPS (Hermes), relayed
+  b: { url: "metrics-b.json" },   // this PC: GPU and CPU
+};
+
+// The eight modules, in page order (two rows of four).
+// dial(d) -> {value, scale_max, log, redline, state, label}; err(d) -> why this module alone has no reading.
+const MODULES = [
+  { id: "c-s", family: "Claude Code", src: "c", title: "Claude Code", what: "tokens per second, this PC",
+    dial: primary, ring: d => frac(d.dial.ring.value, 300000, true),
+    digits: 0, sparkUnit: "tokens/s", sparkFloor: 50, rows: rowsClaudeSecond,
+    kill: "claude", killLabel: "KILL CLAUDE CODE IN FLIGHT" },
+  { id: "c-m", family: "Claude Code", src: "c", title: "Claude Code", what: "new tokens per minute, this PC",
+    dial: d => d.detail.second_dial, spark: d => (d.detail.second_dial || {}).spark,
+    digits: 0, sparkUnit: "tokens/min", sparkFloor: 1000, rows: rowsClaudeMinute },
+  { id: "x-s", family: "Codex", src: "x", title: "Codex", what: "tokens per second, this PC",
+    dial: d => d.detail.second_dial, spark: d => (d.detail.second_dial || {}).spark,
+    digits: 0, sparkUnit: "tokens/s", sparkFloor: 50, rows: rowsCodexSecond,
+    kill: "codex", killLabel: "KILL CODEX IN FLIGHT" },
+  { id: "x-m", family: "Codex", src: "x", title: "Codex", what: "new tokens per minute, this PC",
+    dial: primary, ring: d => frac(d.dial.ring.value, 2000, true),
+    digits: 0, sparkUnit: "tokens/min", sparkFloor: 1000, rows: rowsCodexMinute },
+  { id: "a", src: "a", title: "VPS (Hermes)", what: "metered spend, estimated",
+    dial: primary, ring: d => frac(d.dial.ring.value, 1000000, true),
+    digits: 2, unit: d => `USD per hour, ${d.detail.cost_basis || "estimated"}`,
+    sparkUnit: "USD/hr estimated", sparkFloor: 0.5, rows: rowsA,
+    kill: "vps", killLabel: "PAUSE HERMES (NEW RUNS)", resume: "vps-resume", resumeLabel: "RESUME HERMES" },
+  { id: "b", family: "This PC (GPU)", model: d => d.detail.gpu, src: "b", title: "This PC (GPU)", what: "local hardware load, watts",
+    dial: primary,
+    ring: d => d.dial.ring.value == null ? frac(d.detail.gpu_util_pct, 100, false) : frac(d.dial.ring.value, 500, true),
+    digits: 0, sparkUnit: "W", sparkFloor: 1, rows: rowsB,
+    kill: "local", killLabel: "STOP LOCAL GENERATION" },
+  { id: "cpu", family: "This PC (CPU)", model: d => (d.detail.cpu || {}).name, src: "b", title: "This PC (CPU)", what: "local hardware load, watts", own: true,
+    dial: d => d.detail.cpu && { ...d.detail.cpu, value: d.detail.cpu.watts, label: "CPU package watts" },
+    err: d => d.detail.cpu ? d.detail.cpu.error : null,
+    ring: d => frac((d.detail.cpu || {}).util_pct, 100, false), spark: d => (d.detail.cpu || {}).spark,
+    digits: 0, sparkUnit: "W", sparkFloor: 1, rows: rowsCpu },
+  { id: "ttft", src: "c", title: "Time to first token",
+    what: d => "current model: " + (d && d.detail.model ? d.detail.model : "none seen yet"),
+    dial: d => d.detail.ttft && { ...d.detail.ttft, value: d.detail.ttft.value_s, log: true,
+      label: d.detail.ttft.waiting ? "seconds waiting since the prompt was sent"
+        : d.detail.ttft.value_s == null ? "no request seen yet" : "seconds to first token, last request" },
+    spark: d => (d.detail.ttft || {}).spark,
+    digits: 1, sparkUnit: "s", sparkFloor: 5, sparkWord: "waits", rows: rowsFirstToken },
+];
+
+function polar(r, deg) {
+  const a = (deg - 90) * Math.PI / 180;
+  return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+}
+function arc(r, d0, d1) {
+  const [x0, y0] = polar(r, d0), [x1, y1] = polar(r, d1);
+  return `M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 ${d1 - d0 > 180 ? 1 : 0} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+}
+// Fraction of the sweep for a value: log for rates, linear for watts.
+function frac(v, max, log) {
+  if (v == null || !max) return 0;
+  const f = log ? Math.log10(1 + v) / Math.log10(1 + max) : v / max;
+  return Math.max(0, Math.min(1, f));
+}
+function fmt(v, digits) {
+  if (v == null || Number.isNaN(v)) return "—";
+  return Number(v).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function primary(d) { return { ...d.dial.primary, state: d.dial.state }; }
+const row = (k, v, cls) => `<div class="row"><span>${k}</span><span${cls ? ` class="${cls}"` : ""}>${v}</span></div>`;
+
+function build(m) {
+  let ticks = "";
+  for (let i = 0; i <= 40; i++) {
+    const d = START + SWEEP * i / 40, major = i % 5 === 0;
+    const [x0, y0] = polar(R, d), [x1, y1] = polar(R - (major ? 13 : 7), d);
+    ticks += `<line class="tick${major ? " major" : ""}" x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}"/>`;
+  }
+  const ringLen = (2 * Math.PI * 92 * SWEEP / 360).toFixed(1);
+  m.ringLen = +ringLen;
+  m.el = document.createElement("section");
+  m.el.className = "dial dead"; m.el.id = m.id;
+  document.getElementById("dials").appendChild(m.el);
+  m.el.innerHTML = `
+    <h2>${m.title}</h2><p class="effort"></p><p class="what"></p>
+    <svg class="face" viewBox="28 32 264 226" role="img" aria-label="${m.title} dial">
+      ${ticks}
+      <path class="band" d=""/>
+      <path class="ring-bg" d="${arc(92, START, START + SWEEP)}"/>
+      <path class="ring" d="${arc(92, START, START + SWEEP)}" stroke-dasharray="${ringLen}" stroke-dashoffset="${ringLen}"/>
+      <line class="needle" x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - 104}" style="transform:rotate(${START}deg)"/>
+      <circle class="hub" cx="${CX}" cy="${CY}" r="6"/>
+      <text class="num" x="${CX}" y="218">—</text>
+      <text class="state" x="${CX}" y="252">CONNECTING</text>
+      <text class="scale lo" x="54" y="240">0</text>
+      <text class="scale hi" x="266" y="240"></text>
+    </svg>
+    <div class="unit"></div>
+    <svg class="spark" viewBox="0 0 300 38" preserveAspectRatio="none"><polyline points=""/></svg>
+    <div class="cap spark-cap"></div>
+    <div class="why"></div>
+    <div class="rows"></div>
+    <div class="btns">
+    ${m.kill ? `<button class="kill" type="button">${m.killLabel}</button>` : ""}
+    ${m.resume ? `<button class="kill resume" type="button">${m.resumeLabel}</button>` : ""}
+    ${m.kill ? `<div class="killmsg"></div>` : ""}</div>`;
+  m.q = sel => m.el.querySelector(sel);
+  if (m.kill) m.q(".kill").addEventListener("click", e => pressKill(m, e.currentTarget, m.kill, m.killLabel));
+  if (m.resume) m.q(".resume").addEventListener("click", e => pressKill(m, e.currentTarget, m.resume, m.resumeLabel));
+}
+
+// Kill switch: the first click arms the button for three seconds, the second one fires.
+async function pressKill(m, b, target, label) {
+  const msg = m.q(".killmsg");
+  if (!b.classList.contains("armed")) {
+    b.classList.add("armed"); b.textContent = "CLICK AGAIN TO CONFIRM";
+    b.armTimer = setTimeout(() => { b.classList.remove("armed"); b.textContent = label; }, 3000);
+    return;
+  }
+  clearTimeout(b.armTimer);
+  b.classList.remove("armed"); b.disabled = true; b.textContent = "WORKING";
+  try {
+    const q = new URLSearchParams(location.search); q.set("target", target);
+    const r = await fetch("kill?" + q, { method: "POST", headers: { "X-Gauge-Kill": "1" } });
+    const j = await r.json();
+    msg.textContent = new Date().toLocaleTimeString("en-GB") + "  " + (j.message || j.error || "HTTP " + r.status);
+  } catch (e) { msg.textContent = "request failed: " + (e.message || e); }
+  b.disabled = false; b.textContent = label;
+}
+
+// Which model is running: the one doing most of the output in the last 10 minutes, then any others.
+function ago(sec) { return sec < 90 ? fmt(sec, 0) + " s ago" : sec < 5400 ? fmt(sec / 60, 0) + " min ago" : fmt(sec / 3600, 0) + " h ago"; }
+function modelRows(x) {
+  if (!x.model) return row("model", "none seen yet");
+  const a = x.model_age_s;
+  let h = row("model", esc(x.model) + (a == null ? "" : a <= 60 ? ", running now" : ", last used " + ago(a)));
+  for (const m of (x.models || []).slice(1, 3))
+    h += row("also, last 10 min", `${esc(m.model)}${m.share_pct == null ? "" : ", " + m.share_pct + "% of output"}`);
+  return h;
+}
+function rowsClaudeSecond(d) {
+  const x = d.detail, t = x.tap, r = t && t.last_request;
+  let h = modelRows(x) + (x.token_error ? row("token counts", esc(x.token_error), "low") : "");
+  if (!t) h += row("live tap", "not answering; needle is a log average", "low");
+  else if (!r) h += row("live tap", "running, no request seen yet");
+  else {
+    const sent = (r.input || 0) + (r.cache_read || 0) + (r.cache_write || 0);
+    h += row("last prompt", `${r.input == null ? "sent, not accepted yet" : fmt(sent, 0) + " tokens"}, ${fmt(r.age_s, 0)} s ago`)
+      + row("last answer", `${r.output != null ? fmt(r.output, 0) + " tokens" : fmt(r.output_est, 0) + " tokens estimated"}${r.done_s == null ? ", streaming" : " in " + fmt(r.done_s, 1) + " s"}`)
+      + row("requests in flight / seen", `${fmt(t.active_requests, 0)} / ${fmt(t.requests_total, 0)}`);
+  }
+  const st = x.stream;
+  if (st) h += row("answer pieces this second", `${fmt(st.writes_per_s, 0)}, ${fmt(st.tokens_per_write, 2)} tokens each (${st.learned ? "learned from logs" : "first guess"})`);
+  return h + row("counted from", esc(x.token_source || ""));
+}
+function rowsClaudeMinute(d) {
+  const x = d.detail, busy = (x.active_pids || []).length;
+  return row("per minute from logs, in / out", `${fmt(x.tokens_in_per_min, 0)} / ${fmt(x.tokens_out_per_min, 0)}`)
+    + row("cache written / read per minute", `${fmt(x.cache_write_per_min, 0)} / ${fmt(x.cache_read_per_min, 0)}`)
+    + row("last 10 seconds", fmt(x.tokens_last_10s, 0) + " tokens")
+    + row("output since the gauge started", fmt((x.since_start || {}).output, 0) + " tokens")
+    + row("processes, busy / running", `${busy} / ${fmt(x.processes, 0)}`)
+    + row("counted from", "usage counters in Claude Code's session logs");
+}
+function rowsCodexSecond(d) {
+  const x = d.detail;
+  let h = modelRows(x) + (x.token_error ? row("token counts", esc(x.token_error), "low") : "");
+  h += row("last 10 seconds", fmt(x.tokens_last_10s, 0) + " tokens")
+    + row("bytes its processes wrote", fmt(d.dial.ring.value, 1) + " KB per second (any writing, not only answers)");
+  if (x.newest_row_age_s != null) h += row("newest count is", fmt(x.newest_row_age_s, 0) + " s old");
+  return h + row("counted from", esc(x.token_source || ""));
+}
+function rowsCodexMinute(d) {
+  const x = d.detail, busy = (x.active_pids || []).length;
+  let h = row("per minute, in / out", `${fmt(x.tokens_in_per_min, 0)} / ${fmt(x.tokens_out_per_min, 0)}`)
+    + row("cache written / read per minute", `${fmt(x.cache_write_per_min, 0)} / ${fmt(x.cache_read_per_min, 0)}`)
+    + row("processes, busy / running", `${busy} / ${fmt(x.processes, 0)}`);
+  h += row("last model", x.model ? esc(x.model) : "none seen yet");
+  return h;
+}
+function rowsA(d) {
+  const x = d.detail, f = d.dial.fuel;
+  let h = row("credits remaining", f.value == null ? "not available" : fmt(f.value, 2) + " USD" + (x.low_fuel ? " (LOW)" : ""), x.low_fuel ? "low" : "");
+  if (x.fuel_age_s != null) h += row("balance read", fmt(x.fuel_age_s / 60, 0) + " min ago");
+  // Where the needle comes from, as the VPS says it: "store" = 30 s window over finished turns, "stream" = live.
+  if (x.per_second_basis) h += row("needle read from",
+    x.per_second_basis === "stream" ? "the live stream" :
+    x.per_second_basis === "store" ? "finished turns, 30 s window (not live)" : esc(x.per_second_basis));
+  if (x.warming) h += row("window", "still filling; needle reads low", "low");
+  h += row("tokens per minute, in / out", `${fmt(x.tokens_in_per_min, 0)} / ${fmt(x.tokens_out_per_min, 0)}`)
+    + row("cache read per minute", fmt(x.cache_read_per_min, 0))
+    + row("API calls per minute", fmt(x.api_calls_per_min, 1))
+    + row("active sessions", fmt(x.active_sessions, 0));
+  for (const m of (x.models || []).slice(0, 3)) h += row(esc(m.model), fmt(m.usd_per_hr, 2) + " USD/hr estimated");
+  if (x.period_end) h += row("period ends", esc(x.period_end));
+  return h;
+}
+function rowsB(d) {
+  const x = d.detail, f = d.dial.fuel;
+  const pct = f.of ? 100 * f.value / f.of : 0;
+  const tps = x.tokens_per_s == null ? "not measured" + (x.proxy === "down" ? " (proxy not running)" : "") : fmt(x.tokens_per_s, 1);
+  return row("VRAM used", `${fmt(f.value, 0)} of ${fmt(f.of, 0)} MiB`)
+    + `<div class="fuelbar"><i style="width:${pct.toFixed(1)}%"></i></div>`
+    + row("tokens per second", tps)
+    + row("GPU load", fmt(x.gpu_util_pct, 0) + " %")
+    + row("idle baseline", x.calibrating ? "measuring (60 s)" : fmt(x.idle_watts, 1) + " W")
+    + row("model runtime", x.runtime === "up" ? "running" + (x.model ? " · " + esc(x.model) : "") : "not running")
+    + row("card", esc(x.gpu || ""));
+}
+function rowsCpu(d) {
+  const c = d.detail.cpu || {}, g = d.dial.primary.value;
+  return row("CPU load", fmt(c.util_pct, 0) + " %")
+    + `<div class="fuelbar"><i style="width:${(c.util_pct || 0).toFixed(1)}%"></i></div>`
+    + row("CPU and GPU together", c.watts == null || g == null ? "not available" : fmt(c.watts + g, 0) + " W")
+    + row("chip", esc(c.name || "not known"))
+    + row("read from", "Windows Energy Meter, CPU package; the rest of the board is not counted");
+}
+function rowsFirstToken(d) {
+  const x = d.detail, t = x.ttft || {}, r = x.tap && x.tap.last_request, st = x.stream;
+  let h = row("Claude Code", t.waiting ? "waiting for the first token" :
+    t.value_s == null ? "no request seen yet" :
+    `${fmt(t.value_s, 1)} s${t.age_s == null ? "" : ", " + fmt(t.age_s, 0) + " s ago"}`);
+  if (r) h += row("time to first token, tap", r.first_token_s == null ? "waiting" : fmt(r.first_token_s, 2) + " s");
+  if (st) h += row("quiet before last answer began", st.wait_s == null ? "none seen yet" : "estimated " + fmt(st.wait_s, 1) + " s, " + fmt(st.wait_age_s, 0) + " s ago");
+  h += row("last model", x.model ? esc(x.model) : "none seen yet")
+    + row("read from", esc(t.basis || ""))
+    + row("Codex", "no first-token signal")
+    + row("Hermes", "waits on its stream hook");
+  return h;
+}
+
+function render(m) {
+  const s = m.source, now = performance.now(), d = s.data;
+  const dl = d && d.dial ? (m.dial(d) || null) : null;
+  let view, why = "";
+  if (s.fails >= 3 || (!d && s.fails >= 1)) { view = "OFFLINE"; why = s.err || "source unreachable"; }
+  else if (!d) { view = "CONNECTING"; }
+  else if (d.source_ok === false && !m.own) { view = "OFFLINE"; why = d.error || "source reports a failure"; }
+  else if (now - s.lastChange > (d.stale_after_s || 10) * 1000) { view = "STALE"; why = d.error || "no new sample from the collector"; }
+  else if (d.dial && !dl) { view = "OFFLINE"; why = "the collector does not send this reading yet"; }
+  else if (m.err && m.err(d)) { view = "OFFLINE"; why = m.err(d); }
+  else view = dl ? dl.state : "OFFLINE";
+
+  const live = !!dl && view === dl.state && (m.own || d.source_ok !== false);
+  const dead = !live;
+  m.el.classList.toggle("dead", dead);
+  m.el.style.setProperty("--c", dead ? "var(--dead)" : `var(--${view.toLowerCase()})`);
+  m.q(".state").textContent = view;
+  m.q(".why").textContent = why;
+  let what = typeof m.what === "function" ? m.what(d && d.detail ? d : null) : m.what;
+  // Claude Code and Codex modules are titled with the model that is running, coloured by its tier:
+  // 1 purple (top), 2 orange, 3 yellow, 4 blue (bottom).
+  if (m.family) {
+    // The GPU and CPU modules are titled with the hardware's own name (no tier colour).
+    const x = (d && d.detail) || {}, h2 = m.q("h2"), ai = !m.model;
+    const name = ai ? x.model : (d && d.detail ? m.model(d) : null);
+    h2.textContent = name || m.family;
+    h2.style.color = ai && name && x.model_tier ? `var(--tier${x.model_tier})` : "";
+    const ef = m.q(".effort");
+    ef.textContent = ai && name ? (x.effort ? x.effort.toUpperCase() + " EFFORT" : "") : "";
+    ef.style.color = x.effort_tier ? `var(--tier${x.effort_tier})` : "var(--dim)";
+    if (name) what = m.family + ", " + what;
+  }
+  m.q(".what").textContent = what;
+
+  // The burn flash: first time the state leaves IDLE after at least 60 s of rest.
+  if (live) {
+    if (view === "IDLE") { if (m.prev !== "IDLE") m.idleSince = now; }
+    else if (m.prev === "IDLE" && now - m.idleSince >= REST_MS) {
+      const ring = m.q(".ring");
+      ring.classList.remove("flash"); void ring.getBoundingClientRect(); ring.classList.add("flash");
+      m.flashes = (m.flashes || 0) + 1;
+    }
+    m.prev = view;
+  }
+
+  const needle = m.q(".needle");
+  if (!dl || view === "OFFLINE" || view === "CONNECTING") {
+    needle.style.opacity = 0;               // a dead source has no needle position at all
+    m.q(".num").textContent = "—";
+    m.q(".ring").setAttribute("stroke-dashoffset", m.ringLen);
+    if (!dl) {   // nothing was ever read, or the relay only has a reason to give
+      m.q(".spark polyline").setAttribute("points", "");
+      m.q(".spark-cap").textContent = ""; m.q(".rows").innerHTML = ""; m.q(".unit").textContent = "";
+      return;
+    }
+  } else needle.style.opacity = dead ? .35 : 1;
+
+  if (dl.value != null && view !== "OFFLINE") {
+    needle.style.transform = `rotate(${START + SWEEP * frac(dl.value, dl.scale_max, dl.log)}deg)`;
+    m.q(".num").textContent = fmt(dl.value, m.digits);
+  } else if (dl.value == null) { needle.style.opacity = 0; m.q(".num").textContent = "—"; }
+  m.q(".unit").textContent = m.unit ? m.unit(d) : (dl.label || "");
+  m.q(".hi").textContent = dl.scale_max == null ? "" : fmt(dl.scale_max, 0);
+  if (dl.redline != null && dl.scale_max)
+    m.q(".band").setAttribute("d", arc(R + 5, START + SWEEP * frac(dl.redline, dl.scale_max, dl.log), START + SWEEP));
+
+  // Inner ring: a second reading where the module has one (prompt tokens, live output, load).
+  const rf = m.ring ? m.ring(d) : 0;
+  if (view !== "OFFLINE") m.q(".ring").setAttribute("stroke-dashoffset", (m.ringLen * (1 - rf)).toFixed(1));
+
+  const sp = (m.spark ? m.spark(d) : d.detail.spark) || [];
+  const top = Math.max(m.sparkFloor, ...sp);
+  m.q(".spark polyline").setAttribute("points",
+    sp.map((v, i) => `${(300 * i / 59).toFixed(1)},${(36 - 34 * v / top).toFixed(1)}`).join(" "));
+  m.q(".spark-cap").textContent = sp.length
+    ? `last ${sp.length} ${m.sparkWord || "samples"}, peak ${fmt(Math.max(...sp), m.digits)} ${m.sparkUnit}` : "";
+  m.q(".rows").innerHTML = m.rows(d);
+}
+
+async function poll(s) {
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 4000);
+  try {
+    const r = await fetch(s.url + location.search, { cache: "no-store", signal: ctl.signal });
+    if (!r.ok) {
+      let msg = "HTTP " + r.status;
+      try { msg = (await r.json()).error || msg; } catch (e) { /* not JSON */ }
+      throw new Error(msg);
+    }
+    const d = await r.json();
+    if (d.seq !== s.lastSeq) { s.lastSeq = d.seq; s.lastChange = performance.now(); }
+    s.data = d; s.fails = 0; s.err = null;
+  } catch (e) {
+    s.fails++; s.err = e.name === "AbortError" ? "no answer within 4 s" : String(e.message || e);
+  }
+  clearTimeout(timer);
+  for (const m of s.modules) { try { render(m); } catch (e) { console.error(m.id, e); } }
+  setTimeout(() => poll(s), 1000 * ((s.data && s.data.poll_s) || 1));
+}
+
+for (const s of Object.values(SOURCES))
+  Object.assign(s, { data: null, fails: 0, err: null, lastSeq: null, lastChange: 0, modules: [] });
+for (const m of MODULES) {
+  Object.assign(m, { source: SOURCES[m.src], prev: null, idleSince: performance.now() });
+  m.source.modules.push(m); build(m);
+}
+for (const s of Object.values(SOURCES)) poll(s);
+window.gauge = { sources: SOURCES, modules: MODULES };  // for inspection from the console
+</script>
+</body>
+</html>

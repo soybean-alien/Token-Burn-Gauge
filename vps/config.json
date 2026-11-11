@@ -1,0 +1,15 @@
+{
+  "db_path": "/opt/data/state.db",
+  "wallet_path": "/opt/data/state/nous-spend.json",
+  "wallet_command": null,
+  "serve_port": 8830,
+  "sample_s": 5,
+  "wallet_s": 60,
+  "rate_window_s": 30,
+  "stale_after_s": 15,
+  "burn_usd_per_hr": 3.0,
+  "redline_usd_per_hr": 8.0,
+  "low_credits_usd": 2.0,
+  "scale_max_usd_per_hr": 20,
+  "history_days": 30
+}
