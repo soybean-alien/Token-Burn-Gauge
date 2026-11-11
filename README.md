@@ -1,5 +1,7 @@
 # Token Burn Gauge
 
+<p align="center"><img src="assets/Token-Burn-Gauge-Stack.svg" alt="Built with Python 67.8%, C# 19.4%, HTML 10.7%"></p>
+
 A small Windows desktop app that shows, on eight dials, how fast your AI tools are burning tokens and what your PC is doing while they do it. It reads counters and timestamps only. It never calls a model and never reads what you or the model wrote.
 
 ## What it shows
