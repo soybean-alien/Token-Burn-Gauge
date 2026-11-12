@@ -19,7 +19,8 @@ page = f"""<!doctype html>
 <svg width="2560" height="1280" viewBox="0 0 2560 1280" xmlns="http://www.w3.org/2000/svg">
 <rect width="2560" height="1280" fill="{BG}"/>
 """
-page += text("mono", 144, 182, 33, DIM, "TOKEN BURN GAUGE · WINDOWS DESKTOP APP", 'letter-spacing="10"')
+page += '<image href="../../assets/TokenGauge-256.png" x="136" y="118" width="104" height="104"/>\n'
+page += text("mono", 262, 182, 33, DIM, "TOKEN BURN GAUGE · WINDOWS DESKTOP APP", 'letter-spacing="7"')
 page += text("serif", 132, 400, 170, INK, "Token Burn Gauge", 'font-style="italic"')
 page += text("serif", 144, 540, 84, INK, "Claude Code, Codex,")
 page += text("serif", 144, 630, 84, INK, "GPU and CPU on one board.")

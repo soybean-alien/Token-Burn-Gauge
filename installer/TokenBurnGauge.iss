@@ -1,7 +1,7 @@
 ; Token Burn Gauge by soybean_alien
 ; Per-user installer (no administrator rights). Built by tools\build-installer.ps1, which passes the version.
 #ifndef AppVersion
-  #define AppVersion "0.1.1"
+  #define AppVersion "0.1.2"
 #endif
 #define Root ".."
 

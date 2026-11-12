@@ -1,4 +1,4 @@
-# Token Burn Gauge by soybean_alien. Draws the app icon: the Quotalis "Gauge Q" mark in black with red accents.
+# Token Burn Gauge by soybean_alien. Draws the app icon: the Quotalis "Gauge Q" mark in black with red accents and a yellow needle with a black tip.
 # Writes assets/TokenGauge.ico, assets/TokenGauge-256.png and the installer wizard images (installer/wizard-*.bmp).
 # Runs in Windows PowerShell (WPF): powershell -STA -ExecutionPolicy Bypass -File tools/make-icon.ps1
 param(
@@ -33,7 +33,7 @@ function Get-IconXaml([bool]$small, [string]$background = 'Transparent') {
   <Path Data='M86,84 A62,62 0 0 1 158,76' StrokeThickness='6' StrokeStartLineCap='Round' StrokeEndLineCap='Round' Opacity='0.8'>
     <Path.Stroke><LinearGradientBrush StartPoint='0,0' EndPoint='0,1'><GradientStop Offset='0' Color='#BFFFFFFF'/><GradientStop Offset='1' Color='#00FFFFFF'/></LinearGradientBrush></Path.Stroke>
   </Path>
-  <Ellipse Canvas.Left='191' Canvas.Top='191' Width='10' Height='10' Fill='#B3FFFFFF'/>
+  <Ellipse Canvas.Left='190' Canvas.Top='190' Width='12' Height='12' Fill='#050505'/>
 "@ }
     $tile = if ($small) { "<Rectangle Canvas.Left='4' Canvas.Top='4' Width='248' Height='248' RadiusX='56' RadiusY='56'" } else { "<Rectangle Canvas.Left='12' Canvas.Top='12' Width='232' Height='232' RadiusX='56' RadiusY='56'" }
     @"
@@ -51,7 +51,7 @@ function Get-IconXaml([bool]$small, [string]$background = 'Transparent') {
   </Path>
 $extras  <Path Data='$gauge' StrokeThickness='$arc' StrokeStartLineCap='Round' StrokeEndLineCap='Round'><Path.Stroke>$mint</Path.Stroke></Path>
   <Path Data='M$n0,$n0 L$n1,$n1' StrokeThickness='$needle' StrokeStartLineCap='Round' StrokeEndLineCap='Round'>
-    <Path.Stroke><LinearGradientBrush StartPoint='0,0' EndPoint='1,1'><GradientStop Offset='0' Color='#F4F7F5'/><GradientStop Offset='1' Color='#8D9A93'/></LinearGradientBrush></Path.Stroke>
+    <Path.Stroke><LinearGradientBrush StartPoint='0,0' EndPoint='1,1'><GradientStop Offset='0' Color='#FFE680'/><GradientStop Offset='1' Color='#E0A800'/></LinearGradientBrush></Path.Stroke>
   </Path>
 $shine</Canvas>
 "@
