@@ -1,7 +1,7 @@
 ; Token Burn Gauge by soybean_alien
 ; Per-user installer (no administrator rights). Built by tools\build-installer.ps1, which passes the version.
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.1.1"
 #endif
 #define Root ".."
 
@@ -21,6 +21,10 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName=Token Burn Gauge
 LicenseFile={#Root}\LICENSE
+SetupIconFile={#Root}\assets\TokenGauge.ico
+UninstallDisplayIcon={app}\TokenGauge.exe
+WizardImageFile=wizard-large.bmp,wizard-large-200.bmp
+WizardSmallImageFile=wizard-small.bmp,wizard-small-200.bmp
 
 [Files]
 Source: "{#Root}\artifacts\publish\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
@@ -40,6 +44,7 @@ Source: "{#Root}\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ign
 
 [Icons]
 Name: "{autoprograms}\Token Burn Gauge"; Filename: "{app}\TokenGauge.exe"
+Name: "{autodesktop}\Token Burn Gauge"; Filename: "{app}\TokenGauge.exe"
 
 [Run]
 Filename: "{app}\TokenGauge.exe"; Description: "Start Token Burn Gauge"; Flags: nowait postinstall skipifsilent

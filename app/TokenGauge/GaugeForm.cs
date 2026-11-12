@@ -92,6 +92,7 @@ sealed class GaugeForm : Form
     {
         _base = baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/";
         Text = "Token-burn gauge";
+        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         BackColor = Bg;
         StartPosition = FormStartPosition.Manual;
         var wa = Screen.PrimaryScreen!.WorkingArea;                 // half the screen, on the right

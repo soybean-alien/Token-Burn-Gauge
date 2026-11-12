@@ -6,7 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>TokenGauge</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
+    <ApplicationIcon>..\..\assets\TokenGauge.ico</ApplicationIcon>
     <Product>Token Burn Gauge</Product>
     <Company>soybean_alien</Company>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
