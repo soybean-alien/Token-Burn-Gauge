@@ -1,6 +1,6 @@
 ![Token Burn Gauge: Claude Code, Codex, GPU and CPU on one board](assets/hero.png)
 
-<p align="center"><img src="assets/Token-Burn-Gauge-Stack.svg" alt="Built with Python 67.8%, C# 19.4%, HTML 10.7%"></p>
+<p align="center"><img src="assets/Token-Burn-Gauge-Stack.svg" alt="Built with Python 67.4%, C# 17.8%, HTML 9.6%, PowerShell 3.8% (GitHub language breakdown)"></p>
 
 # Token Burn Gauge
 
